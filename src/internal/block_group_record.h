@@ -29,11 +29,9 @@ SOFTWARE.
 
 #include "block_record.h"
 
-#define BLOCK_GROUP_MAGIC 0xDEADBEEF
-
 typedef struct block_group
 {
-    uint32_t magic;
+    uint32_t checksum;
     uint32_t page_count;
     uint32_t largest_free_block;
     struct block_group* prev_block_group;
@@ -41,5 +39,8 @@ typedef struct block_group
 
     struct block first_block[];
 } block_group;
+
+int      check_block_group   (const block_group* bg);
+uint32_t block_group_checksum(const block_group* bg);
 
 #endif /* BLOCK_GROUP_RECORD_H */

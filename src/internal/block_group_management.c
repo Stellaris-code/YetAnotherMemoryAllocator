@@ -53,13 +53,13 @@ block_group *alloc_block_group(size_t byte_len)
 
     const size_t block_size = page_count*page_size - sizeof(block_group);
 
-    record->magic = BLOCK_GROUP_MAGIC;
     record->page_count = page_count;
     record->largest_free_block = block_size;
+    record->checksum = block_group_checksum(record);
 
-    record->first_block[0].magic = BLOCK_MAGIC;
-    record->first_block[0].block_group = record;
-    record->first_block[0].size = block_size;
+    record->first_block->block_group = record;
+    record->first_block->size = block_size;
+    record->first_block->checksum = block_checksum(record->first_block);
 
     yam_allocated_memory += page_count*page_size;
 
@@ -81,12 +81,6 @@ block *find_largest_free_block(block_group *bg)
     block* largest_block = current_block;
     while (current_block)
     {
-        if (current_block->magic != BLOCK_MAGIC)
-        {
-            dump_yam_state();
-        }
-        ASSERT(current_block->magic == BLOCK_MAGIC);
-
         if (!current_block->used && (largest_block->used || current_block->size > largest_block->size))
             largest_block = current_block;
 
@@ -94,7 +88,6 @@ block *find_largest_free_block(block_group *bg)
         current_block = next_block(current_block);
     }
 
-    ASSERT(largest_block->magic == BLOCK_MAGIC);
     if (largest_block->used) /* we didn't find any free block */
     {
         return NULL;
@@ -107,7 +100,11 @@ void delete_block_group(block_group *record)
     if (record->prev_block_group && record->next_block_group)
     {
         record->prev_block_group->next_block_group = record->next_block_group;
+        record->prev_block_group->checksum
+                = block_group_checksum(record->prev_block_group);
         record->next_block_group->prev_block_group = record->prev_block_group;
+        record->next_block_group->checksum
+                = block_group_checksum(record->next_block_group);
     }
     else if (!record->prev_block_group)
     {
@@ -115,11 +112,15 @@ void delete_block_group(block_group *record)
         if (record->next_block_group)
         {
             record->next_block_group->prev_block_group = NULL;
+            record->next_block_group->checksum
+                    = block_group_checksum(record->next_block_group);
         }
     }
     else // !record->next_block_group
     {
         record->prev_block_group->next_block_group = NULL;
+        record->prev_block_group->checksum
+                = block_group_checksum(record->prev_block_group);
     }
 
     free_block_group(record);
@@ -131,12 +132,12 @@ size_t used_block_count(const block_group* bg)
     size_t counter = 0;
     while (current_block)
     {
-        if (current_block->magic != BLOCK_MAGIC)
+        if (!check_block(current_block))
         {
             dump_yam_state();
             fflush(stdout);
         }
-        ASSERT(current_block->magic == BLOCK_MAGIC);
+        ASSERT(check_block(current_block));
         if (current_block->used) ++counter;
 
         current_block = next_block(current_block);

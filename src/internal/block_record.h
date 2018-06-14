@@ -28,8 +28,6 @@ SOFTWARE.
 #include <stdint.h>
 #include <stddef.h>
 
-#define BLOCK_MAGIC 0xF00D
-
 typedef struct /*__attribute__((packed))*/ block
 {
     struct block*       previous;
@@ -43,7 +41,7 @@ typedef struct /*__attribute__((packed))*/ block
     int      used : 1;
 #endif
 
-    uint16_t magic;
+    uint16_t checksum;
 
     uint8_t data[];
 } block;
@@ -53,7 +51,9 @@ extern "C"
 {
 #endif
 
-block* next_block(const block* in_block);
+block*   next_block    (const block* in_block);
+int      check_block   (const block *blk);
+uint16_t block_checksum(const block* blk);
 
 #ifdef __cplusplus
 }

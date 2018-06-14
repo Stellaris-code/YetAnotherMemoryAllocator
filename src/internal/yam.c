@@ -32,13 +32,22 @@ SOFTWARE.
 #include "debug.h"
 
 #define ALIGNMENT 16
-#define CONTROL_MAGIC 0xBEEF
+#define CONTROL_MAGIC 0xEF
 
 typedef struct __attribute__((packed)) control_structure
 {
     block* associated_block;
-    uint16_t magic;
+    uint8_t checksum;
 } control_structure;
+
+uint8_t control_checksum(const control_structure* control)
+{
+    uint8_t sum = 0;
+    for (unsigned i = 0; i < sizeof(block*); ++i)
+        sum ^= *((uint8_t*)&control->associated_block+i);
+
+    return sum;
+}
 
 int yam_used_memory = 0;
 
@@ -56,13 +65,14 @@ block* get_block(void* ptr)
     control_structure* control =
             (control_structure*)((uint8_t*)ptr - sizeof(control_structure));
 
-    if (control->magic != CONTROL_MAGIC)
+    if (control->checksum != control_checksum(control))
     {
         ERROR("Invalid control magic : address %p is invalid\n", ptr);
+
         return NULL;
     }
 
-    ASSERT(control->associated_block->magic == BLOCK_MAGIC);
+    ASSERT(check_block(control->associated_block));
 
     return control->associated_block;
 }
@@ -113,10 +123,10 @@ void *yam_aligned_alloc(uint32_t size, size_t alignement)
             ((uint8_t*)address - sizeof(control_structure));
 
     control->associated_block = block;
-    control->magic = CONTROL_MAGIC;
+    control->checksum = control_checksum(control);
 
-    ASSERT(control->associated_block->magic == BLOCK_MAGIC);
-    ASSERT(control->associated_block->block_group->magic == BLOCK_GROUP_MAGIC);
+    ASSERT(check_block(control->associated_block));
+    ASSERT(check_block_group(control->associated_block->block_group));
 
     /* check if the alignment is correct */
     ASSERT((uintptr_t)address % alignement == 0);

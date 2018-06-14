@@ -27,11 +27,36 @@ SOFTWARE.
 
 #include "block_group_management.h"
 
+#include "debug.h"
+
+uint16_t block_checksum(const block* blk)
+{
+    uint16_t sum = 0;
+
+    sum += (uintptr_t)blk->previous;
+    sum += (uintptr_t)blk->block_group;
+    sum += blk->size;
+    sum += blk->used;
+
+    return sum;
+}
+
+int check_block(const block* blk)
+{
+    if (blk->checksum != block_checksum(blk))
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
 block *next_block(const block *in_block)
 {
     /* ignore blocks which wouldn't fit in the end of the block group */
     size_t boundary = block_group_end(in_block->block_group)-sizeof(block);
     if ((uintptr_t)in_block + in_block->size >= boundary)
         return NULL;
+
     return (block*)((uint8_t*)in_block + in_block->size);
 }

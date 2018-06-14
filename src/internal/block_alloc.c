@@ -40,11 +40,6 @@ void mark_as_used(block *target_block, size_t size)
     const size_t free_size = target_block->size - size;
 
     block* used_block = target_block;
-    if (used_block->magic != BLOCK_MAGIC)
-    {
-        ERROR("Invalid block magic : %p\n", used_block);
-        ASSERT(0);
-    }
 
     if (free_size <= sizeof(block)) /* not enough space for a free block */
     {
@@ -60,15 +55,18 @@ void mark_as_used(block *target_block, size_t size)
     if (free_block && free_size > sizeof(block))
     {
         /* Mark the second part of the block as free */
-        free_block->magic = BLOCK_MAGIC;
         free_block->size = free_size;
         free_block->used = 0;
         free_block->block_group = used_block->block_group;
         free_block->previous = used_block;
-        if (next_block(free_block))
+        block* next = next_block(free_block);
+        if (next)
         {
-            next_block(free_block)->previous = free_block;
+            next->previous = free_block;
+            next->checksum = block_checksum(next);
         }
+
+        free_block->checksum = block_checksum(free_block);
     }
 }
 
@@ -93,6 +91,8 @@ int resize_block(block *blk, uint32_t size)
 
     mark_as_used(blk, size);
 
+    blk->checksum = block_checksum(blk);
+
     return 1;
 }
 
@@ -112,7 +112,7 @@ block *allocate_new_block(uint32_t size)
         current_bg = current_bg->next_block_group;
     }
 
-    if (current_bg->magic != BLOCK_GROUP_MAGIC)
+    if (!check_block_group(current_bg))
     {
         ERROR("Invalid Block group magic : %p\n", current_bg);
         ASSERT(0);
@@ -122,10 +122,13 @@ block *allocate_new_block(uint32_t size)
     if (current_bg->largest_free_block < size)
     {
         current_bg->next_block_group = alloc_block_group(size);
+        current_bg->checksum = block_group_checksum(current_bg);
         /* out of memory */
         if (!current_bg->next_block_group) return NULL;
 
         current_bg->next_block_group->prev_block_group = current_bg;
+        current_bg->next_block_group->checksum
+                = block_group_checksum(current_bg->next_block_group);
         current_bg = current_bg->next_block_group;
     }
 
@@ -149,7 +152,6 @@ block *allocate_new_block(uint32_t size)
         return NULL;
     }
 
-    current_block->magic = BLOCK_MAGIC;
     current_block->previous = previous_block;
     current_block->block_group = current_bg;
 
@@ -160,8 +162,14 @@ block *allocate_new_block(uint32_t size)
     else
         current_bg->largest_free_block = 0;
 
+    current_bg->checksum = block_group_checksum(current_bg);
+
     if (current_block->previous) ASSERT(next_block(current_block->previous) == current_block);
     if (next_block(current_block)) ASSERT(next_block(current_block)->previous == current_block);
+
+    current_block->checksum = block_checksum(current_block);
+
+    ASSERT(check_block(current_block));
 
     return current_block;
 }
@@ -172,9 +180,9 @@ void merge_middle(block* target_block);
 
 void delete_block(block *blk)
 {
-    if (blk->magic != BLOCK_MAGIC)
+    if (!check_block(blk))
     {
-        ERROR("Invalid block magic : %p\n", blk);
+        ERROR("Invalid block %p\n", blk);
         ASSERT(0);
     }
     if (!blk->used)
@@ -187,9 +195,10 @@ void delete_block(block *blk)
 
     block_group* bg = blk->block_group;
     ASSERT(bg);
-    ASSERT(bg->magic == BLOCK_GROUP_MAGIC);
+    ASSERT(check_block_group(bg));
 
     blk->used = 0;
+    blk->checksum = block_checksum(blk);
     bg->largest_free_block = MAX(bg->largest_free_block, blk->size);
 
     int left_bordered = blk->previous == NULL;
@@ -228,6 +237,11 @@ void delete_block(block *blk)
         /* all the blocks are free, erase the block group */
         delete_block_group(bg);
     }
+    else
+    {
+        bg->checksum = block_group_checksum(bg);
+        ASSERT(check_block(blk));
+    }
 }
 
 void merge_left(block* target_block)
@@ -241,10 +255,16 @@ void merge_left(block* target_block)
             MAX(target_block->block_group->largest_free_block,
                 target_block->size);
 
-    if (next_block(target_block))
-        next_block(target_block)->previous = target_block;
+    block* next = next_block(target_block);
+    if (next)
+    {
+        next->previous = target_block;
+        next->checksum = block_checksum(next);
+        ASSERT(check_block(next));
+    }
 
-    ASSERT(target_block->magic == BLOCK_MAGIC);
+    target_block->checksum = block_checksum(target_block);
+    ASSERT(check_block(target_block));
 }
 
 void merge_right(block* target_block)
@@ -257,7 +277,9 @@ void merge_right(block* target_block)
             MAX(target_block->block_group->largest_free_block,
                 target_block->previous->size);
 
-    ASSERT(target_block->previous->magic == BLOCK_MAGIC);
+    target_block->previous->checksum = block_checksum(target_block->previous);
+
+    ASSERT(check_block(target_block->previous));
 }
 
 void merge_middle(block* target_block)
@@ -276,8 +298,14 @@ void merge_middle(block* target_block)
                 target_block->previous->size);
 
     block* new_next = next_block(target_block->previous);
-    if (new_next) new_next->previous = target_block->previous;
+    if (new_next)
+    {
+        new_next->previous = target_block->previous;
+        new_next->checksum    = block_checksum(new_next);
+        ASSERT(check_block(new_next));
+    }
     ASSERT(new_next == old_next);
 
-    ASSERT(target_block->previous->magic == BLOCK_MAGIC);
+    target_block->previous->checksum = block_checksum(target_block->previous);
+    ASSERT(check_block(target_block->previous));
 }

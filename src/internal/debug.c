@@ -41,7 +41,7 @@ void dump_yam_state()
 
     while (group)
     {
-        if (group->magic != BLOCK_GROUP_MAGIC)
+        if (check_block_group(group))
             ERROR("Invalid block group magic\n");
         printf("Block at address [%p]\n", group);
         printf("Page  count : %u\n", group->page_count);
@@ -60,9 +60,9 @@ void dump_yam_state()
 
             printf("    └╴Block size : %" PRIu32 "\n", (uint32_t)current_block->size);
 
-            if (current_block->magic != BLOCK_MAGIC)
+            if (!check_block(current_block))
             {
-                printf("    └╴Block #%d has invalid magic number !\n", block_counter);
+                printf("    └╴Block #%d has an invalid checksum !\n", block_counter);
                 break;
             }
 

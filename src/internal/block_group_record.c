@@ -1,5 +1,5 @@
 /*
-yam_stdlib.h
+block_group_record.c
 
 Copyright (c) 14 Yann BOUCHER (yann)
 
@@ -22,31 +22,22 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 */
-#ifndef YAM_STDLIB_H
-#define YAM_STDLIB_H
 
-#include <stddef.h>
+#include "block_group_record.h"
 
-#ifdef __cplusplus
-extern "C"
+uint32_t block_group_checksum(const block_group *bg)
 {
-#endif
+    uint32_t sum = 0;
 
+    sum += bg->page_count;
+    sum += bg->largest_free_block;
+    sum += (uintptr_t)bg->prev_block_group;
+    sum += (uintptr_t)bg->next_block_group;
 
-#ifndef YAM_PREFIX
-#define YAM_PREFIX(x) yam2_##x
-#endif
-
-void* YAM_PREFIX(malloc        )(size_t size);
-void  YAM_PREFIX(free          )(void*  ptr);
-void* YAM_PREFIX(calloc        )(size_t num, size_t size);
-void* YAM_PREFIX(realloc       )(void*  ptr, size_t size);
-void* YAM_PREFIX(aligned_alloc )(size_t alg, size_t size);
-int   YAM_PREFIX(posix_memalign)(void** ptr, size_t alig, size_t size);
-
-#ifdef __cplusplus
+    return sum;
 }
-#endif
 
-
-#endif // YAM_STDLIB_H
+int check_block_group(const block_group *bg)
+{
+    return bg->checksum == block_group_checksum(bg);
+}
